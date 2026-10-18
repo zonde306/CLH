@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { acquirePackLock } from './projects.ts';
 import { downloadUrls } from './download.ts';
 import { safeLabel } from './pack.ts';
-import { fetchPublicResource } from './public-fetch.ts';
+import { fetchPublicResource, fetchModuleResource } from './public-fetch.ts';
 
 let root: string, adapter: any, proxyFetch = false, nextFetch = 0;
 const services = new Map(), fetches = new Map<number, any>();
@@ -45,7 +45,7 @@ async function handle(message) {
   const origin = new URL(message.url).origin, key = origin + '|' + message.discovery;
   if (!services.has(key)) {
     const factory = message.discovery ? adapter.createDiscoveryService : adapter.createService;
-    services.set(key, factory({ root, origin, fetchResource }));
+    services.set(key, factory({ root, origin, fetchResource: proxyFetch ? fetchResource : fetchModuleResource }));
   }
   const response = await services.get(key).handle(new Request(message.url, {
     method: message.method, headers: message.headers, body: message.body,

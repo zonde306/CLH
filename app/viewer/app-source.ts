@@ -19,6 +19,11 @@ const clean = text => String(text || '').replace(/<br\s*\/?\s*>/gi, '\n').replac
 const sessions = new Map();
 const moduleLoads = new Map(), moduleRevisions = new Map();
 globalThis.CharacterVault = { register: registerGame };
+function forgetGameModule(id) {
+  delete GAMES[id]; moduleRevisions.delete(id);
+  for (const key of moduleLoads.keys()) if (key.startsWith(id + ':')) moduleLoads.delete(key);
+  document.querySelector<HTMLLinkElement>('link[data-game-style="' + id + '"]')?.remove();
+}
 async function loadGameModule(project) {
   const id = project.adapter, revision = project.revision || 'local';
   if (GAMES[id] && (!project.revision || moduleRevisions.get(id) === revision)) return;
@@ -31,6 +36,8 @@ async function loadGameModule(project) {
     document.head.append(script);
   }));
   await moduleLoads.get(key);
+  // A removed module's pending script can still finish after the directory scan.
+  if (!projects.some(candidate => candidate.adapter === id)) { forgetGameModule(id); return; }
   if (project.stylesheet) {
     let style = document.querySelector<HTMLLinkElement>('link[data-game-style="' + id + '"]');
     if (!style) { style = document.createElement('link'); style.rel = 'stylesheet'; style.dataset.gameStyle = id; document.head.append(style); }
@@ -68,7 +75,7 @@ function renderGameLinks() {
   $('game-links').replaceChildren(...links); $('game-links').hidden = !links.length;
 }
 function configureGame() {
-  const profile = currentSession.profile; document.title = profile.label + ' · DMMgame Character Vault'; document.body.dataset.game = currentSession.id;
+  const profile = currentSession.profile; document.title = profile.label + ' · CLH'; document.body.dataset.game = currentSession.id;
   $('header-game').textContent = profile.label; $('page-game-title').textContent = profile.title; $('role-game-title').textContent = profile.title;
   $('role-description').textContent = profile.roleDescription; $('game-note').textContent = profile.note; $('footer-game').textContent = profile.label + ' · 角色资源收藏与鉴赏';
   $('portrait-flower').textContent = profile.glyph;
@@ -103,7 +110,9 @@ function configureGame() {
 }
 async function activateGame(project, { focus = false }: any = {}) {
   rememberGame(); const generation = ++gameGeneration;
-  await loadGameModule(project); if (generation !== gameGeneration) return;
+  const stillInstalled = () => generation === gameGeneration && projects.some(candidate => candidate.id === project.id && candidate.adapter === project.adapter && candidate.revision === project.revision);
+  try { await loadGameModule(project); } catch (error) { if (stillInstalled()) throw error; return; }
+  if (!stillInstalled()) return;
   gameView?.destroy(); gameView = null;
   clearTimeout(searchTimer); clearTimeout(polling); clearTimeout(toastTimer); $('toast').hidden = true;
   pauseAudition(true); stopInlineMotion(); inlineModel = null; inlineFailed = false;
@@ -133,11 +142,7 @@ async function loadProjects() {
   projects = (await response.json()).filter(project => /^[a-z0-9][a-z0-9_-]{0,63}$/.test(project.id) && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(project.adapter));
   const present = new Set(projects.map(project => project.id)), adapters = new Set(projects.map(project => project.adapter));
   for (const id of sessions.keys()) if (!present.has(id)) sessions.delete(id);
-  for (const id of Object.keys(GAMES)) if (!adapters.has(id)) {
-    delete GAMES[id]; moduleRevisions.delete(id);
-    for (const key of moduleLoads.keys()) if (key.startsWith(id + ':')) moduleLoads.delete(key);
-    document.querySelector<HTMLLinkElement>('link[data-game-style="' + id + '"]')?.remove();
-  }
+  for (const id of Object.keys(GAMES)) if (!adapters.has(id)) forgetGameModule(id);
   const active = projects.find(project => project.id === currentSession?.id);
   if (active && active.revision === currentSession.revision) { renderGameLinks(); return false; }
   if (currentSession && !active) {
@@ -150,8 +155,9 @@ async function loadProjects() {
     $('collection-status').hidden = true; $('catalog').replaceChildren(); $('more').hidden = true; $('empty').hidden = false;
     $('page-description').textContent = '当前没有可用的游戏。'; $('empty').textContent = '请使用包含游戏内容的完整版本。';
     $('result-count').textContent = '0 位角色'; $('characters-count').textContent = '0'; $('favorites-count').textContent = '0';
-    document.title = 'DMMgame Character Vault'; delete document.body.dataset.game;
-    $('page-game-title').textContent = 'DMMgame Character Vault'; $('footer-game').textContent = '角色资源库'; $('game-note').textContent = '';
+    $('main-content').setAttribute('aria-busy', 'false');
+    document.title = 'CLH'; delete document.body.dataset.game;
+    $('page-game-title').textContent = 'CLH'; $('footer-game').textContent = '角色资源库'; $('game-note').textContent = '';
     $('header-game').textContent = '角色资源库'; updateGetButtons(); return true;
   }
   let saved; try { saved = localStorage.getItem('vault-active-game-v1'); } catch {}
@@ -404,7 +410,7 @@ function renderRole(character) {
   }
   renderPortrait(character, resources.portraits.some(item => item.phase === previousPhase) ? previousPhase : resources.portraits[0]?.phase || 'avatar');
   renderVoices(resources.voices);
-  const savedStories = resources.stories.filter(story => story.downloaded !== false).length;
+  const savedStories = resources.stories.filter(story => story.downloaded !== false && !(currentSession.profile.requiresCompleteStories && story.complete === false)).length;
   $('role-story-count').textContent = savedStories === resources.stories.length ? String(savedStories) : savedStories + '/' + resources.stories.length;
   $('role-voice-count').textContent = resources.voices.length;
   $('role-cg-count').textContent = resources.cg.length;
@@ -415,12 +421,11 @@ function renderRole(character) {
   for (const metadata of resources.stories) {
     const button = element('button', 'role-story-button', metadata.title || '角色剧情');
     const missing = metadata.downloaded === false;
-    const incomplete = currentSession.profile.requiresCompleteStories && metadata.complete === false && metadata.playable !== true;
+    const incomplete = currentSession.profile.requiresCompleteStories && metadata.complete === false;
     if (missing || incomplete) { button.disabled = true; button.textContent += missing ? ' · 未下载' : ' · 尚未完整'; }
     button.addEventListener('click', () => openStory(metadata));
     const row = element('div', 'role-story-row'); row.append(button);
     if (incomplete && !missing) row.append(element('span', 'note', (metadata.expectedSegments ? '脚本 ' + (metadata.segments || 0) + '/' + metadata.expectedSegments + ' 段 · ' : '') + '缺少 ' + (metadata.missingAssets ?? '?') + ' 项播放资源，可更新剧情补齐。'));
-    if (metadata.complete === false && metadata.playable === true && !missing) row.append(element('span', 'note', '缺少 ' + metadata.missingAssets + ' 项音频，仍可播放；更新剧情可重试。'));
     if (metadata.kind === 'audio') row.append(element('span', 'note', '语音短篇'));
     if (metadata.script) {
       const link = element('a', 'script-link', '下载演出脚本');
@@ -561,7 +566,7 @@ function updateGetButtons() {
     if (!label) { button.hidden = true; return; }
     button.hidden = false;
     const savedFrom = currentSession.profile.scopes[scope].savedFrom || [scope];
-    const saved = scope === 'all' ? downloadRole?.collected : savedFrom.some(kind => resources?.[kind]?.some(item => item.downloaded !== false)) || scope === 'cg' && combinedCg() && resources?.motions.length;
+    const saved = scope === 'all' ? downloadRole?.collected : savedFrom.some(kind => resources?.[kind]?.some(item => item.downloaded !== false && !(kind === 'stories' && currentSession.profile.requiresCompleteStories && item.complete === false))) || scope === 'cg' && combinedCg() && resources?.motions.length;
     button.disabled = collectionRunning || !downloadRole || scope === 'cg' && (currentSession.profile.features.rarity || currentSession.profile.requireCgAvailability) && !downloadRole.cgAvailable
       || scope === 'motions' && downloadRole.cgAvailable === false || scope === 'voices' && downloadRole.voiceAvailable === false;
     if (scope === 'stories' && downloadRole?.storyAvailable === false) button.disabled = true;
@@ -606,6 +611,7 @@ new IntersectionObserver(syncPortraitMotion, { rootMargin: '120px 0px' }).observ
 document.addEventListener('visibilitychange', syncPortraitMotion);
 
 async function openStory(metadata) {
+  if (metadata.downloaded === false || currentSession.profile.requiresCompleteStories && metadata.complete === false) return;
   const generation=++storyGeneration,session=currentSession,profile=session.profile;
   pauseAudition();storyReader?.destroy();storyReader=null;
   $('story-dialog').dataset.storyEngine=profile.storyEngine?.(metadata)||'legacy';
@@ -731,7 +737,7 @@ async function pollStatus(session = currentSession) {
       const phase = { ui: '播放器 UI', client: '公开客户端配置', version: '游戏资源版本', catalog: '角色清单', icons: '角色头像', scripts: '剧情', indexing: '素材引用', cg: session.profile.features.stories ? 'CG 与剧情素材' : 'CG', motions: motionLabel(), portraits: '立绘', voices: '角色语音', extracting: '角色内容' }[state.phase] || session.profile.scopes[state.scope || 'all']?.label || '资源';
       $('collection-title').textContent = collectionRunning
         ? state.type === 'catalog' ? '正在' + (session.profile.catalogHarImport ? '导入' : '拉取') + session.profile.label + '的角色清单 · ' + phase : '正在获取角色 ' + (state.roles || []).join('、') + ' 的' + phase
-        : { ready: '资源已更新', partial: '部分资源未完成', failed: '下载失败', interrupted: '下载已中断' }[state.state] || '任务已结束';
+        : state.failed || state.error ? '下载失败' : { ready: '资源已更新', partial: '下载失败', failed: '下载失败', interrupted: '下载已中断' }[state.state] || '任务已结束';
       const total = (state.phase === 'voices' ? state.voiceTargets : ['cg', 'motions'].includes(state.phase) ? state.mediaTargets : state.phase === 'portraits' ? state.portraitTargets : state.targets) ?? state.targets;
       const done = (state.phase === 'voices' ? state.voiceChecked : ['cg', 'motions'].includes(state.phase) ? state.mediaChecked : state.phase === 'portraits' ? state.portraitChecked : state.checked) ?? state.checked;
       $('collection-detail').textContent = collectionRunning && state.phase === 'extracting' ? '正在解包并更新内容…' : total > 0 ? (done || 0) + ' / ' + total : collectionRunning ? '正在准备资源…' : '处理已结束';
@@ -743,8 +749,9 @@ async function pollStatus(session = currentSession) {
         const refreshed = await loadLibrary(session); if (!refreshed || generation !== gameGeneration || request !== statusGeneration) return;
         session.collection.acknowledge();
         if (state.error) notify(state.error);
-        else if (state.failed) notify('部分资源未能下载：' + (state.errors?.[0]?.error || state.failed + ' 项失败。'));
+        else if (state.failed || ['failed', 'partial'].includes(state.state)) notify('下载失败：' + (state.errors?.[0]?.error || (state.failed ? state.failed + ' 项资源未完成，请重试。' : '资源未完整下载，请重试。')));
         else if (state.state === 'interrupted') notify('下载已中断，可重新下载继续。');
+        else if (state.state !== 'ready') notify('任务未完成，请重试。');
         else if (state.placeholders) notify('资源已更新，已跳过 ' + state.placeholders + ' 项空白占位资源。');
         else if (state.type === 'catalog') notify(discoverySummary(state));
         else notify('下载完成，角色资源已更新。');

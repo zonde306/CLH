@@ -21,9 +21,9 @@ const fakeIpHosts = new Set([
   'd3mya90gbacu0m.cloudfront.net'
 ]);
 
-// Exact guest bootstrap/renewal endpoints only. This never
-// permits gameplay or account linking.
-const guestSessionUrls = new Set(['getHelloToken', 'registerGuestAccount', 'getAccessToken']
+// Exact session bootstrap/renewal endpoints only. This never permits gameplay
+// or account linking.
+const sessionUrls = new Set(['getHelloToken', 'registerGuestAccount', 'getAccessToken']
   .map(action => 'https://api-game.muvluv-girls-garden.com/api/Account/' + action));
 
 // Conservatively exclude special-purpose IPv6, including 6to4/Teredo which can
@@ -53,10 +53,11 @@ function isFakeIpAddress(address) {
   return a === 198 && (b === 18 || b === 19);
 }
 
-async function fetchPublicResource(input, { signal, headers = {}, method = 'GET', body }: any = {}) {
+async function requestResource(input, { signal, headers = {}, method = 'GET', body }: any = {}, installedModule = false) {
   const url = new URL(input);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('只支持无账号凭据的 HTTP(S) 资源地址。');
-  if (method !== 'GET' && !(method === 'POST' && guestSessionUrls.has(url.href))) throw new Error('该资源地址不支持此请求方式。');
+  const moduleHttps = installedModule && url.protocol === 'https:' && !url.port;
+  if (method !== 'GET' && !(method === 'POST' && (sessionUrls.has(url.href) || moduleHttps))) throw new Error('该资源地址不支持此请求方式。');
   if (body != null && (method !== 'POST' || typeof body !== 'string' || Buffer.byteLength(body) > 16384)) throw new Error('资源请求正文无效或超过大小限制。');
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
   const literal = net.isIP(hostname);
@@ -65,10 +66,10 @@ async function fetchPublicResource(input, { signal, headers = {}, method = 'GET'
   // AAAA record. Drop that reserved IPv6 candidate instead of rejecting the A
   // record too; it must never reach the connection's pinned lookup results.
   const addresses = resolved.filter(item => !(net.isIP(item.address) === 6 && benchmarkV6.check(item.address, 'ipv6')));
-  // DNS cannot prove a proxy owns an address. Limit the benchmark-pool exception
-  // to known game hosts over HTTPS/443 and authenticate that same host below.
-  // Literal IPs, arbitrary domains and every IPv6 private range stay blocked.
-  const allowFakeIp = !literal && url.protocol === 'https:' && !url.port && fakeIpHosts.has(hostname);
+  // Only built-in hosts or trusted installed adapters may use proxy Fake-IP DNS
+  // over HTTPS/443. Authenticate that same hostname with TLS below; literal IPs
+  // and all other private/reserved destinations stay blocked.
+  const allowFakeIp = !literal && url.protocol === 'https:' && !url.port && (fakeIpHosts.has(hostname) || moduleHttps);
   if (!addresses.length || addresses.some(item => !isPublicAddress(item.address)
     && !(allowFakeIp && isFakeIpAddress(item.address)))) throw new Error('资源 URL 需要指向公网地址。');
   const requestHeaders = new Headers(headers);
@@ -102,4 +103,9 @@ async function fetchPublicResource(input, { signal, headers = {}, method = 'GET'
     request.on('error', reject); request.end(body);
   });
 }
-export { fetchPublicResource, isPublicAddress };
+function fetchPublicResource(input, options: any = {}) { return requestResource(input, options); }
+// Installed adapters already execute trusted local Node code and own their API
+// and CDN addresses. Give only adapter services this HTTPS transport; arbitrary
+// URL downloads keep the public policy, and neither caller can disable TLS.
+function fetchModuleResource(input, options: any = {}) { return requestResource(input, options, true); }
+export { fetchPublicResource, fetchModuleResource, isPublicAddress };

@@ -1,9 +1,9 @@
 {
-  "name": "webgame-resource-workspace",
+  "name": "clh",
   "version": "0.2.0",
   "private": true,
   "license": "MIT",
-  "description": "Local character resource and story viewer for DMM games",
+  "description": "Local media collection and viewer",
   "engines": {
     "node": ">=22"
   },

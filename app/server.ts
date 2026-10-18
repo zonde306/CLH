@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const { loadPack, sha256 } = require('./pack.ts');
 const { DEFAULT_DATA, projectPath, readProject, createProject, listProjects, acquirePackLock, listResources } = require('./projects.ts');
 const { parseUrlList } = require('./download.ts');
-const { fetchPublicResource } = require('./public-fetch.ts');
+const { fetchPublicResource, fetchModuleResource } = require('./public-fetch.ts');
 const { sendFile } = require('./http-files.ts');
 const { createRegistry, DEFAULT_GAMES } = require('./index.ts');
 const { initializeGameData } = require('./initialize.ts');
@@ -32,6 +32,7 @@ async function readJson(req, limit = 1024 ** 2) {
 
 function createServer({ dataRoot = DEFAULT_DATA, gamesRoot = DEFAULT_GAMES, fetchResource = fetchPublicResource }: any = {}) {
   const registry = createRegistry(gamesRoot);
+  const moduleFetch = fetchResource === fetchPublicResource ? fetchModuleResource : fetchResource;
   const getAdapter = id => registry.get(id)?.adapter || null;
   function gameProject(id) {
     try {
@@ -161,8 +162,8 @@ function createServer({ dataRoot = DEFAULT_DATA, gamesRoot = DEFAULT_GAMES, fetc
           if (req.method === 'POST') response = await background.handle(project, game, request, discovery);
           else {
             if (!adapterServices.has(serviceKey)) adapterServices.set(serviceKey, discovery
-              ? adapter.createDiscoveryService({ root: project.root, origin, fetchResource })
-              : adapter.createService({ root: project.root, origin, fetchResource }));
+              ? adapter.createDiscoveryService({ root: project.root, origin, fetchResource: moduleFetch })
+              : adapter.createService({ root: project.root, origin, fetchResource: moduleFetch }));
             response = await adapterServices.get(serviceKey).handle(request);
           }
           if (!response) throw fail('接口不存在。', 404);

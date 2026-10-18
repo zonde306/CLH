@@ -7,6 +7,7 @@ parsed-data/
 /games/flower-knight-girl/story-ui/
 /games/girls-creation/story-ui/
 /games/twinkle-star-knights/story-ui/
+# Local-only game module; keep all source, assets and credentials out of Git.
 /games/minashigo-x/
 __pycache__/
 *.pyc
