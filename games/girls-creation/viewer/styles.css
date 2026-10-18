@@ -2,14 +2,15 @@
 body[data-game="girls-creation"] .gc-catalog{grid-column:1/-1;min-width:0}
 body[data-game="girls-creation"] .gc-kind-tabs{display:flex;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--line);padding-bottom:16px}
 body[data-game="girls-creation"] .gc-kind-tabs button{min-height:44px;white-space:nowrap}
-body[data-game="girls-creation"] .gc-kind-tabs button[aria-pressed="true"]{border-color:var(--teal);background:#eafbf8;color:var(--ink);box-shadow:inset 4px 0 var(--teal)}
+body[data-game="girls-creation"] .gc-kind-tabs button[aria-pressed="true"]{border-color:var(--accent);background:var(--hover);color:var(--ink);box-shadow:inset 2px 0 var(--accent)}
 body[data-game="girls-creation"] .gc-kind-description{margin:16px 0 24px;color:var(--muted);line-height:1.7}
-body[data-game="girls-creation"] .gc-character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:16px}
+body[data-game="girls-creation"] .gc-character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:25px 20px}
 body[data-game="girls-creation"] .character-thumbnail{position:relative;isolation:isolate;padding:8%;aspect-ratio:1}
 body[data-game="girls-creation"] .character-thumbnail>img:not(.gc-card-frame){width:100%;height:100%;max-height:none;object-fit:contain}
 body[data-game="girls-creation"] .character-thumbnail>.gc-card-frame{position:absolute;inset:3%;width:94%;height:94%;max-height:none;object-fit:contain;pointer-events:none;z-index:1}
 body[data-game="girls-creation"] .character-card[data-kind="impression"] .character-thumbnail>img:not(.gc-card-frame){clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
-@media(max-width:600px){body[data-game="girls-creation"] .gc-character-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}body[data-game="girls-creation"] .gc-kind-tabs{gap:8px}body[data-game="girls-creation"] .gc-kind-tabs button{flex:1;padding:10px 6px}}
+@media(max-width:600px){body[data-game="girls-creation"] .gc-kind-tabs{gap:8px}body[data-game="girls-creation"] .gc-kind-tabs button{flex:1;padding:10px 6px}}
+@media(max-width:480px){body[data-game="girls-creation"] .gc-character-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:23px 15px}}
 
 #story-dialog[data-story-engine="girlscreation"]{width:min(1600px,calc(100vw - 24px),calc((100dvh - 76px)*16/9));max-width:none;max-height:calc(100dvh - 16px);padding:0;background:#fff;border:0;overflow:auto}
 #story-dialog[data-story-engine="girlscreation"]>.dialog-header{display:none}

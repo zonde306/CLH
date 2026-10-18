@@ -7,7 +7,7 @@ export ={...{
   "storyPositionPrefix": "dotabyss-position-",
   "description": "选择角色，鉴赏立绘、动态 CG、语音与剧情。",
   "roleDescription": "立绘、动态 CG、角色语音与剧情鉴赏",
-  "note": "皮肤归入本体；泳装等独立角色单列。疑似未实装角色标注“实装待确认”，搜索“未实装”可查找。点 ☆ 可加入收藏。",
+  "note": "皮肤归入本体；泳装等独立角色单列。疑似未实装角色标注“实装待确认”，搜索“未实装”可查找。点收藏按钮可加入收藏。",
   "glyph": "◈",
   "groupedCharacters": true,
   "features": {
@@ -16,6 +16,7 @@ export ={...{
     "voices": true,
     "stories": true,
     "motions": true,
+    "staticCg": false,
     "dynamicCg": true,
     "rarity": false,
     "artists": false,

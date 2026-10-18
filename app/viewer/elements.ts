@@ -3,6 +3,8 @@ export interface PageElements {
   'skip-to-content': HTMLElementTagNameMap['a'];
   'header-game': HTMLElementTagNameMap['span'];
   'game-links': HTMLElementTagNameMap['nav'];
+  'sidebar-navigation': HTMLElementTagNameMap['details'];
+  'theme-toggle': HTMLElementTagNameMap['button'];
   'characters-count': HTMLElementTagNameMap['b'];
   'favorites-count': HTMLElementTagNameMap['b'];
   'main-content': HTMLElementTagNameMap['main'];
@@ -18,6 +20,7 @@ export interface PageElements {
   'discover-characters': HTMLElementTagNameMap['button'];
   'refresh': HTMLElementTagNameMap['button'];
   'catalog': HTMLElementTagNameMap['section'];
+  'catalog-layout-controls': HTMLElementTagNameMap['div'];
   'empty': HTMLElementTagNameMap['div'];
   'more': HTMLElementTagNameMap['button'];
   'catalog-tools-heading': HTMLElementTagNameMap['h2'];
