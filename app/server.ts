@@ -9,6 +9,7 @@ const { loadPack, sha256 } = require('./pack.ts');
 const { DEFAULT_DATA, projectPath, readProject, createProject, listProjects, acquirePackLock, listResources } = require('./projects.ts');
 const { parseUrlList } = require('./download.ts');
 const { fetchPublicResource, fetchModuleResource } = require('./public-fetch.ts');
+const { proxySummary } = require('./proxy-env.ts');
 const { sendFile } = require('./http-files.ts');
 const { createRegistry, DEFAULT_GAMES } = require('./index.ts');
 const { initializeGameData } = require('./initialize.ts');
@@ -223,6 +224,8 @@ if (require.main === module) {
     server.listen(port, '127.0.0.1', () => {
       const url = `http://127.0.0.1:${server.address().port}`;
       console.log(`角色资源库：${url}/\n按 Ctrl+C 停止本地服务。`);
+      const proxy = proxySummary();
+      if (proxy) console.log(`上游代理：${proxy}\n如需更换线路，请在启动前设置 HTTPS_PROXY 等环境变量。`);
       if (process.argv.includes('--open')) openBrowser(url);
     });
   }

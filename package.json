@@ -12,7 +12,8 @@
     "serve": "node --import tsx app/server.ts",
     "setup:python": "node --import tsx tools/setup-python.ts",
     "build:viewer": "node --import tsx tools/build-viewer.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@esotericsoftware/spine-pixi-v7": "4.2.120",
