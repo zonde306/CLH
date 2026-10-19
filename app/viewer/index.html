@@ -121,16 +121,20 @@
   <dialog id="batch-dialog" class="discovery-dialog" aria-labelledby="batch-title">
     <header class="dialog-header"><div><small id="batch-game"></small><h2 id="batch-title">批量下载</h2></div><button id="batch-close" class="close-button" data-close aria-label="关闭批量下载">×</button></header>
     <form id="batch-form">
-      <label class="discovery-field" for="batch-target">下载目标 <span>从当前角色列表选择</span></label>
-      <select id="batch-target" class="catalog-select" aria-label="批量下载目标">
-        <option value="all">全部已显示角色</option>
-        <option value="saved">仅未收录资源的角色</option>
-        <option value="missing">仅已保存资源的角色</option>
-      </select>
+      <div id="batch-target-field">
+        <label class="discovery-field" for="batch-target">下载目标 <span>从当前角色列表选择</span></label>
+        <select id="batch-target" class="catalog-select" aria-label="批量下载目标">
+          <option value="all">全部已显示角色</option>
+          <option value="saved">仅未收录资源的角色</option>
+          <option value="missing">仅已保存资源的角色</option>
+        </select>
+      </div>
       <label class="discovery-field" for="batch-scope">下载分类</label>
       <select id="batch-scope" class="catalog-select" aria-label="批量下载分类"></select>
-      <label class="discovery-field" for="batch-ids">自定义编号 <span>可选，每行或逗号分隔，支持 ID 范围</span></label>
-      <textarea id="batch-ids" class="batch-ids-input" rows="3" maxlength="12000" placeholder="留空按上面选择；也可填写编号或范围，例如 101, 102-105"></textarea>
+      <div id="batch-ids-field">
+        <label class="discovery-field" for="batch-ids">自定义编号 <span>可选，每行或逗号分隔，支持 ID 范围</span></label>
+        <textarea id="batch-ids" class="batch-ids-input" rows="3" maxlength="12000" placeholder="留空按上面选择；也可填写编号或范围，例如 101, 102-105"></textarea>
+      </div>
       <label class="filter-check"><input type="checkbox" id="batch-retry">仅补齐缺失资源（已保存的跳过）</label>
       <p id="batch-summary" class="note"></p>
       <p id="batch-message" class="note" role="alert" hidden></p>

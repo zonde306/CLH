@@ -131,8 +131,10 @@ export interface PageElements {
   'batch-dialog': HTMLElementTagNameMap['dialog'];
   'batch-form': HTMLElementTagNameMap['form'];
   'batch-target': HTMLElementTagNameMap['select'];
+  'batch-target-field': HTMLElementTagNameMap['div'];
   'batch-scope': HTMLElementTagNameMap['select'];
   'batch-ids': HTMLElementTagNameMap['textarea'];
+  'batch-ids-field': HTMLElementTagNameMap['div'];
   'batch-retry': HTMLElementTagNameMap['input'];
   'batch-summary': HTMLElementTagNameMap['p'];
   'queue-dialog': HTMLElementTagNameMap['dialog'];

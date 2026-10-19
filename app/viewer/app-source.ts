@@ -920,30 +920,47 @@ function parseIds(text) {
   return [...ids];
 }
 function queueUrl(session = currentSession) { return '/api/projects/' + encodeURIComponent(session.id) + '/queue'; }
-function openBatchDialog() {
+let batchMode = 'batch', batchRoleId = null;
+function openBatchDialog({ mode = 'batch', id = null }: any = {}) {
   if (!currentSession || !library) return;
+  batchMode = mode; batchRoleId = id;
+  const single = mode === 'role';
+  $('batch-title').textContent = single ? '加入下载队列' : '批量下载';
   $('batch-game').textContent = currentSession.profile.label;
-  $('batch-scope').replaceChildren(...batchScopes().map(([id, value]: any) => {
-    const option = element('option', '', value.label); option.value = id;
-    if (id === 'all') option.selected = true; return option;
+  $('batch-scope').replaceChildren(...batchScopes().map(([value, meta]: any) => {
+    const option = element('option', '', meta.label); option.value = value;
+    if (value === 'all') option.selected = true; return option;
   }));
-  $('batch-ids').value = ''; $('batch-retry').checked = false;
+  // The role page only queues that one role, so hide the bulk target picker
+  // and the free-form id box instead of showing the generic batch form.
+  $('batch-target-field').hidden = single;
+  $('batch-ids-field').hidden = single;
+  $('batch-retry').checked = false;
+  $('batch-ids').value = single ? String(id) : '';
+  $('batch-submit').textContent = single ? '加入队列' : '加入队列';
   $('batch-message').hidden = true; updateBatchSummary();
-  openDialog($('batch-dialog')); $('batch-target').focus();
+  openDialog($('batch-dialog'));
+  (single ? $('batch-scope') : $('batch-target')).focus();
 }
 function updateBatchSummary() {
   if (!currentSession || !library) return;
+  const scopeLabel = ($('batch-scope').selectedOptions[0] as HTMLOptionElement)?.textContent || '';
+  if (batchMode === 'role' && batchRoleId) {
+    const name = library.characters.find(character => character.id === batchRoleId)?.name || batchRoleId;
+    $('batch-summary').textContent = `即将把「${name}」加入“${scopeLabel}”下载队列。`;
+    return;
+  }
   const custom = parseIds($('batch-ids').value);
   const count = custom.length ? custom.length : batchCandidates($('batch-target').value).length;
-  const scopeLabel = ($('batch-scope').selectedOptions[0] as HTMLOptionElement)?.textContent || '';
   $('batch-summary').textContent = `即将把 ${count} 个角色加入“${scopeLabel}”下载队列。`;
 }
 async function submitBatch(event) {
   event.preventDefault();
   if (!currentSession || !library) return;
-  const scope = $('batch-scope').value; const custom = parseIds($('batch-ids').value);
-  const ids = custom.length ? custom : batchCandidates($('batch-target').value)
-    .map(character => character.id);
+  const scope = $('batch-scope').value;
+  const ids = batchMode === 'role' && batchRoleId ? [String(batchRoleId)]
+    : (parseIds($('batch-ids').value).length ? parseIds($('batch-ids').value)
+      : batchCandidates($('batch-target').value).map(character => character.id));
   if (!ids.length) { $('batch-message').textContent = '没有可加入队列的角色。'; $('batch-message').hidden = false; return; }
   const button = $('batch-submit'); button.disabled = true;
   try {
@@ -1042,12 +1059,12 @@ $('batch-cancel').addEventListener('click', () => $('batch-dialog').close());
 $('batch-close').addEventListener('click', () => $('batch-dialog').close());
 $('queue-close').addEventListener('click', () => $('queue-dialog').close());
 $('queue-clear').addEventListener('click', clearQueueFinished);
-$('batch-download').addEventListener('click', openBatchDialog);
+$('batch-download').addEventListener('click', () => openBatchDialog({ mode: 'batch' }));
 $('queue-status').addEventListener('click', openQueue);
 $('batch-download-role').addEventListener('click', () => {
   if (!selectedRole) return;
   const id = (currentSession.profile.downloadCharacter?.(selectedRole) || selectedRole).id;
-  $('batch-ids').value = id; openBatchDialog(); updateBatchSummary();
+  openBatchDialog({ mode: 'role', id });
 });
 // Light background refresh keeps the queue badge and dialog current without
 // blocking the page; refreshQueue early-returns when there is nothing to track.
