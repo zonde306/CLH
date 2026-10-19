@@ -25,5 +25,6 @@ app/viewer/app.js -whitespace
 /node_modules export-ignore
 games/*/tests export-ignore
 games/*/docs export-ignore
+games/*/README.md export-ignore
 games/*/dev export-ignore
 /app/dev export-ignore

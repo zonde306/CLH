@@ -7,7 +7,8 @@ function spinePlacement(args = []) {
   return { x: number(args[2], 0), y: number(args[3], 0), scale: scale > 0 ? scale : 0.36 };
 }
 function fitScene(width, height, placement = spinePlacement()) {
-  const scale = Math.max(0, Math.min(1, width / FRAME.width, height / FRAME.height));
+  // Scale the authored viewport both down and up so larger players do not leave extra gaps.
+  const scale = Math.max(0, Math.min(width / FRAME.width, height / FRAME.height));
   return { scale: scale * placement.scale,
     x: (width - FRAME.width * scale) / 2 + (FRAME.width / 2 + placement.x) * scale,
     y: (height - FRAME.height * scale) / 2 + (FRAME.height / 2 + placement.y) * scale };

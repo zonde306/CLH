@@ -2,6 +2,10 @@ node_modules/
 parsed-data/
 /.tools/
 /har/
+# Keep development guides and module research on this computer.
+/docs/
+/games/*/docs/
+/games/*/README.md
 /games/dotabyss/story-ui/
 /games/muvluv-ggx/story-ui/
 /games/flower-knight-girl/story-ui/

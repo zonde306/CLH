@@ -1,10 +1,16 @@
 import { GAMES, registerGame, SORT_ORDERS, sortCharacters, gameFromPath, gameSession } from './games.ts';
 import { characterArtists, artistOptions } from './artists.ts';
+import { enhanceSelect } from './select-menu.ts';
+import { initializeThemeToggle } from './theme.ts';
 
 import type { PageElements } from './elements.ts';
 function $<K extends keyof PageElements>(id: K): PageElements[K];
 function $(id: string): HTMLElement;
 function $(id: string) { return document.getElementById(id); }
+globalThis.CharacterVault = { register: registerGame };
+
+// The bundle restores the theme in <head>; mount controls after the body exists.
+function mountViewer() {
 const dialogReturnViews = new WeakMap<HTMLDialogElement, {scroll: number; focus: HTMLElement; game: string}>();
 const asset = file => currentSession.path + 'library/' + file.split('/').map(encodeURIComponent).join('/');
 const CATALOG_PAGES = ['characters', 'favorites'], CHARACTER_SECTIONS = ['presentation', 'stories', 'voices'];
@@ -18,7 +24,6 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: stri
 const clean = text => String(text || '').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/?(?:color|size|b|i|ruby|rt|font)(?:=[^>]*)?>/gi, '').replace(/\\n/g, '\n');
 const sessions = new Map();
 const moduleLoads = new Map(), moduleRevisions = new Map();
-globalThis.CharacterVault = { register: registerGame };
 function forgetGameModule(id) {
   delete GAMES[id]; moduleRevisions.delete(id);
   for (const key of moduleLoads.keys()) if (key.startsWith(id + ':')) moduleLoads.delete(key);
@@ -55,6 +60,33 @@ let portraitModel = null, portraitPlayer, portraitGeneration = 0, portraitFailed
 let appliedHash = null;
 let gameView = null;
 let queueItems = [], queueGeneration = 0, queuePolling, queueOpen = false, queueRetry = false;
+const catalogSelects = [...document.querySelectorAll<HTMLSelectElement>('.catalog-select')].map(enhanceSelect);
+const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+let pageAnimation: Animation, renderedRoute = '';
+function revealPage(page: HTMLElement) {
+  pageAnimation?.cancel();
+  if (reducedMotion?.matches || !page.animate) return;
+  pageAnimation = page.animate([{ opacity: .55, transform: 'translateY(5px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 200, easing: 'cubic-bezier(.22,1,.36,1)' });
+}
+reducedMotion?.addEventListener('change', () => { if (reducedMotion.matches) pageAnimation?.cancel(); });
+initializeThemeToggle($('theme-toggle'));
+let catalogLayout = 'grid';
+try { if (localStorage.getItem('vault-catalog-layout-v1') === 'list') catalogLayout = 'list'; } catch {}
+const navigationMedia = window.matchMedia?.('(max-width:760px)');
+function syncNavigation() { $('sidebar-navigation').open = !navigationMedia?.matches; }
+function closeMobileNavigation() { if (navigationMedia?.matches) $('sidebar-navigation').open = false; }
+navigationMedia?.addEventListener('change', syncNavigation); syncNavigation();
+function shellIcon(name: string) {
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  icon.classList.add('shell-icon'); icon.setAttribute('aria-hidden', 'true'); use.setAttribute('href', '#vault-icon-' + name); icon.append(use); return icon;
+}
+function applyCatalogLayout() {
+  const custom = !!gameView?.renderCatalog;
+  $('catalog-layout-controls').hidden = custom;
+  $('catalog').dataset.layout = custom ? 'grid' : catalogLayout;
+  document.querySelectorAll<HTMLElement>('[data-catalog-layout]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.catalogLayout === catalogLayout)));
+}
 
 function rememberGame() {
   if (!currentSession) return;
@@ -63,13 +95,16 @@ function rememberGame() {
 }
 function renderGameLinks() {
   const links = projects.map(project => {
-    const link = element('a', 'secondary-button', project.label || GAMES[project.adapter]?.label || project.name); link.href = '/games/' + project.id + '/'; link.dataset.gameId = project.id;
+    const label = project.label || GAMES[project.adapter]?.label || project.name, link = element('a', 'secondary-button');
+    const mark = element('span', 'game-mark', Array.from(label)[0]); mark.setAttribute('aria-hidden', 'true');
+    link.append(mark, element('span', 'game-link-label', label)); link.href = '/games/' + project.id + '/'; link.dataset.gameId = project.id;
     if (project.id === currentSession?.id) link.setAttribute('aria-current', 'page');
     link.addEventListener('click', event => {
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button) return;
       event.preventDefault(); if (project.id === currentSession?.id && gameFromPath(location.pathname) === project.id) return;
       rememberGame(); const hash = sessions.get(project.id)?.hash || '#characters';
       history.pushState({}, '', '/games/' + project.id + '/' + hash);
+      closeMobileNavigation();
       activateGame(project, { focus: true }).catch(error => notify(error.message));
     }); return link;
   });
@@ -89,7 +124,7 @@ function configureGame() {
   document.querySelector<HTMLElement>('.voice-introduction').textContent = profile.voiceDescription || '日常、战斗、养成与季节语音。剧情配音在剧情中播放。';
   $('search').placeholder = profile.features.artists ? '名字、编号或画师' : '角色名字或编号';
   const combined = combinedCg(), label = motionLabel();
-  $('role-gallery-section').hidden = combined;
+  $('role-gallery-section').hidden = combined || profile.features.staticCg === false;
   const gallery = $(combined ? 'role-motion-section' : 'role-gallery-section');
   gallery.insertBefore($('role-media'), gallery.children[1] || null);
   gallery.insertBefore($('role-cg-empty'), $('role-media').nextSibling);
@@ -114,6 +149,7 @@ function configureGame() {
   renderGameLinks();
 }
 async function activateGame(project, { focus = false }: any = {}) {
+  catalogSelects.forEach(menu => menu.close(true)); pageAnimation?.cancel();
   rememberGame(); const generation = ++gameGeneration;
   const stillInstalled = () => generation === gameGeneration && projects.some(candidate => candidate.id === project.id && candidate.adapter === project.adapter && candidate.revision === project.revision);
   try { await loadGameModule(project); } catch (error) { if (stillInstalled()) throw error; return; }
@@ -134,8 +170,10 @@ async function activateGame(project, { focus = false }: any = {}) {
   $('collection-status').hidden = true; $('character-page').hidden = true; $('catalog-page').hidden = false;
   $('catalog').replaceChildren(); $('empty').hidden = true; $('more').hidden = true; $('page-description').textContent = '正在读取角色…';
   $('main-content').setAttribute('aria-busy', 'true'); configureGame(); updateGetButtons();
+  for (const id of ['characters-count', 'favorites-count', 'saved-count', 'portrait-count', 'cg-count', 'dynamic-count'] as const) $(id).textContent = '—';
   gameView = currentSession.profile.createView?.({ asset, openRole, toggleFavorite, getCharacter, characterCard, isBusy: () => collectionRunning, syncMedia: syncInlineMotion,
     rerender: () => { renderCatalog(); if (selectedRole) renderRole(selectedRole); } }) || null;
+  applyCatalogLayout();
   try { localStorage.setItem('vault-active-game-v1', project.id); } catch {}
   try { await loadLibrary(currentSession); }
   catch (error) { if (generation !== gameGeneration) return; $('main-content').setAttribute('aria-busy', 'false'); $('page-description').textContent = error.message; throw error; }
@@ -161,6 +199,7 @@ async function loadProjects() {
     $('collection-status').hidden = true; $('catalog').replaceChildren(); $('more').hidden = true; $('empty').hidden = false;
     $('page-description').textContent = '当前没有可用的游戏。'; $('empty').textContent = '请使用包含游戏内容的完整版本。';
     $('result-count').textContent = '0 位角色'; $('characters-count').textContent = '0'; $('favorites-count').textContent = '0';
+    for (const id of ['saved-count', 'portrait-count', 'cg-count', 'dynamic-count'] as const) $(id).textContent = '0';
     $('main-content').setAttribute('aria-busy', 'false');
     document.title = 'CLH'; delete document.body.dataset.game;
     $('page-game-title').textContent = 'CLH'; $('footer-game').textContent = '角色资源库'; $('game-note').textContent = '';
@@ -217,6 +256,7 @@ function restoreCatalog() {
 }
 function applyRoute({ focus = false }: any = {}) {
   clearTimeout(searchTimer);
+  catalogSelects.forEach(menu => menu.close(true));
   const legacyTarget = { cg: 'role-gallery-section', motions: 'role-motion-section' }[location.hash.split('/')[2]];
   const route = readRoute(location.hash, library), oldRole = selectedRole?.id, oldTab = tab;
   tab = route.tab;
@@ -244,15 +284,19 @@ function applyRoute({ focus = false }: any = {}) {
   if (selectedRole) {
     renderRole(selectedRole);
     if (focus) { $('role-title').focus({ preventScroll: true }); window.scrollTo({ top: 0 }); }
-    if (legacyTarget) $(legacyTarget).scrollIntoView();
+    if (legacyTarget) $(legacyTarget === 'role-gallery-section' && $('role-gallery-section').hidden ? 'role-motion-section' : legacyTarget).scrollIntoView();
   } else if (focus || oldRole || oldTab !== tab) restoreCatalog();
   appliedHash = location.hash;
   currentSession.hash = appliedHash;
+  const nextRoute = location.pathname + appliedHash;
+  if (renderedRoute && renderedRoute !== nextRoute) revealPage(selectedRole ? $('character-page') : $('catalog-page'));
+  renderedRoute = nextRoute;
 }
 function setTab(page) {
   if (!library || !CATALOG_PAGES.includes(page)) return;
   saveCatalog();
   history.pushState({}, '', routeHash(page)); applyRoute({ focus: true });
+  closeMobileNavigation();
 }
 function characterCard(character) {
   const card = element('div', 'character-card'), open = element('button', 'character-open');
@@ -268,7 +312,7 @@ function characterCard(character) {
   caption.append(element('strong', '', character.name), element('small', character.collected ? 'available' : '', rarityLabel + (character.collected ? '已保存资源' : '尚未获取')));
   open.append(thumbnail, caption);
   open.addEventListener('click', () => openRole(character));
-  const star = element('button', 'favorite-star', favorites.has(character.id) ? '★' : '☆');
+  const star = element('button', 'favorite-star'); star.append(shellIcon('star'));
   star.dataset.favoriteId = character.id; star.setAttribute('aria-label', '收藏角色 ' + character.name);
   star.setAttribute('aria-pressed', String(favorites.has(character.id)));
   star.addEventListener('click', () => toggleFavorite(character.id));
@@ -276,6 +320,7 @@ function characterCard(character) {
 }
 function renderCatalog() {
   if (!library) return;
+  applyCatalogLayout();
   $('page-title').textContent = tab === 'favorites' ? '我的收藏' : '角色图鉴';
   $('page-description').textContent = tab === 'favorites' ? '收藏的角色，随时打开鉴赏。' : currentSession.profile.description;
   $('characters-count').textContent = currentSession.profile.groupedCharacters ? currentSession.profile.catalogCharacters(library).length : library.characters.length;
@@ -300,6 +345,7 @@ function renderCatalog() {
       const option = element('option', '', artist.label + '（' + (counts.get(artist.value) || 0) + '）'); option.value = artist.value; return option;
     })); $('artist-filter').value = artist;
   }
+  catalogSelects.forEach(menu => menu.sync());
   $('saved-count').textContent = library.characters.filter(character => character.collected).length;
   $('dynamic-count').textContent = library.characters.filter(character => character.hasDynamicCg).length;
   $('portrait-count').textContent = library.stats?.portraits ?? library.characters.reduce((total, character) => total + (character.portraits || []).filter(item => item.file).length, 0);
@@ -311,13 +357,13 @@ function renderCatalog() {
   $('result-count').textContent = items.length.toLocaleString('zh-CN') + (tab === 'favorites' ? ' 位收藏角色' : ' 位角色');
   $('empty').hidden = items.length > 0;
   $('empty').textContent = !library.characters.length && currentSession.profile.emptyCatalogMessage ? currentSession.profile.emptyCatalogMessage
-    : tab === 'favorites' && !favorites.size ? '在角色图鉴点 ☆，收藏喜欢的角色。' : '暂无匹配角色。';
+    : tab === 'favorites' && !favorites.size ? '在角色图鉴点收藏按钮，留下喜欢的角色。' : '暂无匹配角色。';
   $('more').hidden = !!gameView?.renderCatalog || items.length <= limit;
   $('more').textContent = '加载更多 · 还有 ' + Math.max(0, items.length - limit) + ' 位角色';
 }
 function updateFavorite() {
   if (!selectedRole) return;
-  $('role-favorite').textContent = favorites.has(selectedRole.id) ? '★ 已收藏' : '☆ 收藏角色';
+  $('role-favorite').replaceChildren(shellIcon('star'), document.createTextNode(favorites.has(selectedRole.id) ? '已收藏' : '收藏角色'));
   $('role-favorite').setAttribute('aria-pressed', String(favorites.has(selectedRole.id)));
 }
 function toggleFavorite(id) {
@@ -342,9 +388,12 @@ function backToCatalog() {
 }
 function setRoleSection(section) {
   if (!selectedRole || !CHARACTER_SECTIONS.includes(section) || !currentSession.profile.features[section]) return;
+  const changed = roleSection !== section;
   roleSection = section; history.replaceState(history.state, '', routeHash(tab, selectedRole.id, section));
   appliedHash = location.hash; currentSession.hash = appliedHash;
   renderRoleSection();
+  renderedRoute = location.pathname + appliedHash;
+  if (changed) revealPage($('role-panel-' + section));
 }
 function renderRoleSection() {
   for (const section of CHARACTER_SECTIONS) {
@@ -773,6 +822,14 @@ async function pollStatus(session = currentSession) {
 }
 
 document.querySelectorAll<HTMLElement>('.nav-item').forEach(button => button.addEventListener('click', () => setTab(button.dataset.tab)));
+document.querySelectorAll<HTMLElement>('[data-catalog-layout]').forEach(button => button.addEventListener('click', () => {
+  catalogLayout = button.dataset.catalogLayout === 'list' ? 'list' : 'grid'; applyCatalogLayout();
+  try { localStorage.setItem('vault-catalog-layout-v1', catalogLayout); } catch {}
+}));
+document.addEventListener('keydown', event => {
+  if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || $('catalog-page').hidden || document.querySelector('dialog[open]') || (event.target as Element)?.closest?.('input,textarea,select,[role=combobox],[contenteditable]')) return;
+  event.preventDefault(); $('search').focus();
+});
 $('skip-to-content').addEventListener('click', event => {
   event.preventDefault(); $('main-content').focus({ preventScroll: true }); $('main-content').scrollIntoView();
 });
@@ -782,31 +839,18 @@ $('search').addEventListener('input', () => {
   catalogState[tab].query = $('search').value; catalogState[tab].limit = limit;
   searchTimer = setTimeout(renderCatalog, 180);
 });
-document.querySelectorAll<HTMLElement>('[data-availability]').forEach(button => button.addEventListener('click', () => {
+function updateCatalogFilter(key: string, value: string | boolean) {
   if (!catalogState) return;
   clearTimeout(searchTimer); limit = 72; catalogState[tab].limit = limit;
-  catalogState[tab].availability = button.dataset.availability; renderCatalog();
-}));
-$('dynamic-filter').addEventListener('change', () => {
-  if (!catalogState) return;
-  clearTimeout(searchTimer); limit = 72; catalogState[tab].limit = limit;
-  catalogState[tab].dynamicOnly = $('dynamic-filter').checked; renderCatalog();
+  catalogState[tab][key] = value; renderCatalog();
+}
+document.querySelectorAll<HTMLElement>('[data-availability]').forEach(button => {
+  button.addEventListener('click', () => updateCatalogFilter('availability', button.dataset.availability));
 });
-$('rarity-filter').addEventListener('change', () => {
-  if (!catalogState) return;
-  clearTimeout(searchTimer); limit = 72; catalogState[tab].limit = limit;
-  catalogState[tab].rarity = $('rarity-filter').value; renderCatalog();
-});
-$('artist-filter').addEventListener('change', () => {
-  if (!catalogState) return;
-  clearTimeout(searchTimer); limit = 72; catalogState[tab].limit = limit;
-  catalogState[tab].artist = $('artist-filter').value; renderCatalog();
-});
-$('sort-order').addEventListener('change', () => {
-  if (!catalogState) return;
-  clearTimeout(searchTimer); limit = 72; catalogState[tab].limit = limit;
-  catalogState[tab].sort = $('sort-order').value; renderCatalog();
-});
+$('dynamic-filter').addEventListener('change', () => updateCatalogFilter('dynamicOnly', $('dynamic-filter').checked));
+for (const [id, key] of [['rarity-filter', 'rarity'], ['artist-filter', 'artist'], ['sort-order', 'sort']] as const) {
+  $(id).addEventListener('change', () => updateCatalogFilter(key, $(id).value));
+}
 $('more').addEventListener('click', () => { limit += 72; catalogState[tab].limit = limit; renderCatalog(); });
 $('refresh').addEventListener('click', async () => { try { if (library) saveCatalog(); const changed = await loadProjects(); if (!changed && currentSession) { await loadLibrary(); await pollStatus(); } } catch (error) { notify(error.message); } });
 $('back-to-catalog').addEventListener('click', backToCatalog);
@@ -1008,4 +1052,6 @@ $('batch-download-role').addEventListener('click', () => {
 // Light background refresh keeps the queue badge and dialog current without
 // blocking the page; refreshQueue early-returns when there is nothing to track.
 window.setInterval(() => { if (!document.hidden) refreshQueue(); }, 3000);
-refreshQueue();
+}
+if ($('main-content')) mountViewer();
+else document.addEventListener('DOMContentLoaded', mountViewer, { once: true });

@@ -6,7 +6,7 @@ export ={...{
   "favoriteKey": "aigis-favorites-v1",
   "description": "选择角色，鉴赏立绘与 CG。",
   "roleDescription": "立绘与 CG 鉴赏",
-  "note": "基础与觉醒立绘归在同一角色中。点 ☆ 可加入收藏。",
+  "note": "基础与觉醒立绘归在同一角色中。点收藏按钮可加入收藏。",
   "glyph": "◇",
   "catalogHarImport": true,
   "selectCatalogHar": require('../src/catalog-har.ts').selectCatalogHar,

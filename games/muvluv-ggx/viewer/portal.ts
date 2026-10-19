@@ -106,7 +106,7 @@ export class PortalView {
     for (const character of shown) {
       const card = node('article', 'muv-portal-card'), open = node('button', 'character-open muv-portal-open');
       open.type = 'button'; open.dataset.characterId = character.id; open.setAttribute('aria-label', '鉴赏角色 ' + character.name); open.append(this.preview(character, library));
-      const caption = node('span', 'muv-portal-caption'); caption.append(node('strong', '', character.name), node('small', '', (character.styles?.length || 1) + ' 种样式 · ' + (character.collected ? '已保存资源' : '尚未获取'))); open.append(caption);
+      const caption = node('span', 'muv-portal-caption'); caption.append(node('strong', '', character.name), node('small', character.collected ? 'available' : '', (character.styles?.length || 1) + ' 种样式 · ' + (character.collected ? '已保存资源' : '尚未获取'))); open.append(caption);
       open.addEventListener('click', () => this.api.openRole(character));
       const favorite = node('button', 'favorite-star', favorites.has(character.id) ? '★' : '☆'); favorite.type = 'button'; favorite.dataset.favoriteId = character.id;
       favorite.setAttribute('aria-label', '收藏角色 ' + character.name); favorite.setAttribute('aria-pressed', String(favorites.has(character.id)));

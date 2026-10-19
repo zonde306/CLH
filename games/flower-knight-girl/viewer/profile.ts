@@ -6,7 +6,7 @@ export ={...{
   "favoriteKey": "flower-favorites-v1",
   "description": "选择角色，鉴赏立绘、语音与剧情。",
   "roleDescription": "立绘、角色语音与剧情鉴赏",
-  "note": "进化与开花形态归在同一角色中。点 ☆ 可加入收藏。",
+  "note": "进化与开花形态归在同一角色中。点收藏按钮可加入收藏。",
   "glyph": "✿",
   "discoveryHint": "留空更新角色清单；也可填写六位角色编号或范围，例如 150001, 150003-150021。每次最多 500 个编号。",
   "features": {
