@@ -24,7 +24,7 @@
       <header class="page-header"><div><div class="eyebrow"><span id="page-game-title">CHARACTER VAULT</span><span class="eyebrow-line" aria-hidden="true"></span></div><h1 id="page-title" tabindex="-1">角色图鉴</h1><p id="page-description">正在读取角色…</p></div><div class="page-motif" aria-hidden="true"><span></span><span></span><span></span></div></header>
       <div class="catalog-layout">
         <div class="catalog-results">
-          <section class="catalog-toolbar"><span id="result-count"></span><div class="catalog-actions"><button id="discover-characters" class="primary-button" data-feature="discovery" hidden>拉取新角色</button><button id="refresh" class="secondary-button">刷新</button></div></section>
+          <section class="catalog-toolbar"><span id="result-count"></span><div class="catalog-actions"><button id="discover-characters" class="primary-button" data-feature="discovery" hidden>拉取新角色</button><button id="batch-download" class="secondary-button" hidden>批量下载</button><button id="queue-status" class="secondary-button" hidden>下载队列</button><button id="refresh" class="secondary-button">刷新</button></div></section>
           <section id="catalog" class="catalog" aria-label="角色列表"></section>
           <div id="empty" class="empty" hidden>暂无匹配角色。</div><button id="more" class="more-button" hidden>加载更多</button>
         </div>
@@ -42,7 +42,7 @@
       </div>
     </section>
     <section id="character-page" class="character-page" aria-labelledby="role-title" hidden>
-      <div class="character-toolbar"><button id="back-to-catalog" class="secondary-button">← 返回角色图鉴</button><div class="character-actions"><button id="role-favorite" class="secondary-button" aria-pressed="false">☆ 收藏角色</button><button id="get-character" class="primary-button" data-download-scope="all">下载角色全部资源</button></div></div>
+      <div class="character-toolbar"><button id="back-to-catalog" class="secondary-button">← 返回角色图鉴</button><div class="character-actions"><button id="role-favorite" class="secondary-button" aria-pressed="false">☆ 收藏角色</button><button id="batch-download-role" class="secondary-button" hidden>加入下载队列</button><button id="get-character" class="primary-button" data-download-scope="all">下载角色全部资源</button></div></div>
       <header class="character-heading"><div class="eyebrow"><span id="role-game-title">CHARACTER VAULT</span><span class="eyebrow-line" aria-hidden="true"></span></div><h1 id="role-title" tabindex="-1"></h1><p id="role-description"></p><p id="role-artists" class="note" data-feature="artists" hidden></p></header>
       <nav class="role-tabs" role="tablist" aria-label="角色内容" data-feature="sections" hidden>
         <button id="role-tab-presentation" data-section="presentation" role="tab" aria-selected="true" aria-controls="role-panel-presentation" tabindex="0"><span class="role-tab-symbol" aria-hidden="true">▧</span>鉴赏</button>
@@ -91,6 +91,35 @@
       <div class="discovery-actions"><button id="discovery-submit" class="primary-button" type="submit">开始拉取</button></div>
     </form>
     <section id="discovery-result" class="discovery-result" aria-live="polite" hidden><p id="discovery-message"></p><p id="discovery-warning" class="note" hidden></p><div id="discovery-roles" class="discovery-roles"></div></section>
+  </dialog>
+  <dialog id="batch-dialog" class="discovery-dialog" aria-labelledby="batch-title">
+    <header class="dialog-header"><div><small id="batch-game"></small><h2 id="batch-title">批量下载</h2></div><button id="batch-close" class="close-button" data-close aria-label="关闭批量下载">×</button></header>
+    <form id="batch-form">
+      <label class="discovery-field" for="batch-target">下载目标 <span>从当前角色列表选择</span></label>
+      <select id="batch-target" class="catalog-select" aria-label="批量下载目标">
+        <option value="all">全部已显示角色</option>
+        <option value="saved">仅未收录资源的角色</option>
+        <option value="missing">仅已保存资源的角色</option>
+      </select>
+      <label class="discovery-field" for="batch-scope">下载分类</label>
+      <select id="batch-scope" class="catalog-select" aria-label="批量下载分类"></select>
+      <label class="discovery-field" for="batch-ids">自定义编号 <span>可选，每行或逗号分隔，支持 ID 范围</span></label>
+      <textarea id="batch-ids" class="batch-ids-input" rows="3" maxlength="12000" placeholder="留空按上面选择；也可填写编号或范围，例如 101, 102-105"></textarea>
+      <label class="filter-check"><input type="checkbox" id="batch-retry">仅补齐缺失资源（已保存的跳过）</label>
+      <p id="batch-summary" class="note"></p>
+      <p id="batch-message" class="note" role="alert" hidden></p>
+      <div class="discovery-actions">
+        <button id="batch-cancel" class="secondary-button" type="button">取消</button>
+        <button id="batch-submit" class="primary-button" type="submit">加入队列</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="queue-dialog" class="discovery-dialog" aria-labelledby="queue-title">
+    <header class="dialog-header"><div><small>后台下载</small><h2 id="queue-title">下载队列</h2></div><button id="queue-close" class="close-button" data-close aria-label="关闭下载队列">×</button></header>
+    <p class="note">任务在后台逐个下载，关闭浏览器也会继续。完成后刷新页面即可查看新增资源。</p>
+    <div class="queue-summary"><span id="queue-progress-summary">暂无任务</span><button id="queue-clear" class="secondary-button" type="button" hidden>清除已完成</button></div>
+    <div id="queue-list" class="queue-list" aria-live="polite"></div>
+    <p id="queue-empty" class="note">队列为空。在“批量下载”里选择角色后加入队列。</p>
   </dialog>
   <dialog id="image-dialog" class="image-dialog" aria-labelledby="image-title"><header class="dialog-header"><div><small>角色 CG</small><h2 id="image-title"></h2></div><button class="close-button" data-close aria-label="关闭 CG">×</button></header><img id="cg-image" alt="CG 大图"></dialog>
   <dialog id="motion-dialog" class="motion-dialog" aria-labelledby="motion-title"><header class="dialog-header"><div><small>动态鉴赏</small><h2 id="motion-title"></h2></div><button class="close-button" data-close aria-label="关闭动态素材">×</button></header><div id="motion-stage" class="motion-stage"></div><label class="animation-control">动作<select id="animation-select" aria-label="选择动画动作"></select></label><p id="motion-note" class="note"></p></dialog>

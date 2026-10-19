@@ -15,12 +15,15 @@ const { createRegistry, DEFAULT_GAMES } = require('./index.ts');
 const { initializeGameData } = require('./initialize.ts');
 const lock = require('./download-lock.ts');
 const { createBackgroundTasks } = require('./background.ts');
+const { createQueueManager } = require('./queue.ts');
 
 const identity = { app: 'webgame-resource-workspace', workspace: sha256(Buffer.from(path.resolve(__dirname, '..'))) };
 const json = (res, data, status = 200) => { res.writeHead(status, {
   'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
   'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' }); res.end(JSON.stringify(data)); };
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+// Scopes accepted by the installed game modules (profiles + collectionScope).
+const QUEUE_SCOPES = new Set(['all', 'portraits', 'cg', 'motions', 'voices', 'stories', 'ui', 'story-ui', 'catalog']);
 
 async function readJson(req, limit = 1024 ** 2) {
   if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) throw fail('需要 application/json 格式。', 415);
@@ -49,6 +52,7 @@ function createServer({ dataRoot = DEFAULT_DATA, gamesRoot = DEFAULT_GAMES, fetc
     }
   }
   const background = createBackgroundTasks(fetchResource), adapterServices = new Map();
+  const queueManager = createQueueManager({ background, getGame: id => registry.get(id) });
   function startJob(project, type, work) {
     const release = acquirePackLock(project.root);
     const job = { id: randomUUID(), type, state: 'queued', started: new Date().toISOString() };
@@ -101,11 +105,13 @@ function createServer({ dataRoot = DEFAULT_DATA, gamesRoot = DEFAULT_GAMES, fetc
         if (req.method === 'POST') { const { root, ...project } = createProject(await readJson(req), dataRoot); json(res, project, 201); return; }
         throw fail('METHOD_NOT_ALLOWED', 405);
       }
-      const api = /^\/api\/projects\/([^/]+)\/(resources|import|download|job|extract|files\/([a-f0-9]{64}))$/.exec(pathname);
+      const api = /^\/api\/projects\/([^/]+)\/(resources|import|download|job|extract|queue|files\/([a-f0-9]{64}))$/.exec(pathname);
       if (api) {
-        const project = readProject(api[1], dataRoot);
-        if (project.adapter && !getAdapter(project.adapter)) throw fail('游戏模块未安装。', 404);
         const action = api[2];
+        // The queue lives at the project level, so resolve it the same way the
+        // viewer does (an installed game without project.json is still usable).
+        const project = action === 'queue' ? gameProject(api[1]) : readProject(api[1], dataRoot);
+        if (project.adapter && !getAdapter(project.adapter)) throw fail('游戏模块未安装。', 404);
         if (action === 'resources' && req.method === 'GET') {
           json(res, listResources(project.root, { query: url.searchParams.get('q') || '', category: url.searchParams.get('type') || '',
             offset: url.searchParams.get('offset'), limit: url.searchParams.get('limit') })); return;
@@ -132,6 +138,25 @@ function createServer({ dataRoot = DEFAULT_DATA, gamesRoot = DEFAULT_GAMES, fetc
           const adapter = getAdapter(project.adapter);
           if (typeof adapter?.extract !== 'function') throw fail('此项目没有配置解包适配器。');
           json(res, await background.run(project, registry.get(project.adapter), 'extract'), 202); return;
+        }
+        if (action === 'queue') {
+          const queue = queueManager.ensure(project);
+          if (!queue) throw fail('这款游戏暂不支持批量下载。', 400);
+          if (req.method === 'GET') { json(res, { items: queue.getItems() }); return; }
+          if (req.method === 'POST') {
+            const { ids, scope, retryMissing } = await readJson(req, 256 * 1024);
+            if (!Array.isArray(ids) || !ids.length || !ids.every(id => typeof id === 'string' && id)) throw fail('请提交角色编号列表。', 400);
+            if (ids.length > 100000) throw fail('一次最多加入 100000 个下载任务。', 400);
+            if (typeof scope !== 'string' || !QUEUE_SCOPES.has(scope)) throw fail('下载分类无效。', 400);
+            const added = queue.add({ ids, scope, retryMissing: retryMissing === true });
+            json(res, { items: queue.getItems(), added }); return;
+          }
+          if (req.method === 'DELETE') {
+            if (url.searchParams.get('action') === 'clear') queue.clearCompleted();
+            else { const id = url.searchParams.get('id'), scope = url.searchParams.get('scope'); if (id && scope) queue.remove(id, scope); }
+            json(res, { items: queue.getItems() }); return;
+          }
+          throw fail('METHOD_NOT_ALLOWED', 405);
         }
         if (action.startsWith('files/') && ['GET', 'HEAD'].includes(req.method)) {
           const pack = loadPack(path.join(project.root, 'cache'));
@@ -189,7 +214,8 @@ function createServer({ dataRoot = DEFAULT_DATA, gamesRoot = DEFAULT_GAMES, fetc
     }
   });
   server.requestTimeout = 10 * 60 * 1000;
-  server.on('close', () => background.close());
+  server.on('close', () => { background.close(); queueManager.close(); });
+  queueManager.resumeAll(dataRoot);
   return server;
 }
 

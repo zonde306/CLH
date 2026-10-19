@@ -54,6 +54,7 @@ let inlineModel = null, inlinePlayer, motionGeneration = 0, inlineFailed = false
 let portraitModel = null, portraitPlayer, portraitGeneration = 0, portraitFailed = false;
 let appliedHash = null;
 let gameView = null;
+let queueItems = [], queueGeneration = 0, queuePolling, queueOpen = false, queueRetry = false;
 
 function rememberGame() {
   if (!currentSession) return;
@@ -101,6 +102,10 @@ function configureGame() {
   $('motion-dialog').querySelector<HTMLElement>('small').textContent = combined ? 'CG 鉴赏' : '动态鉴赏';
   $('motion-dialog').querySelector<HTMLElement>('[data-close]').setAttribute('aria-label', '关闭' + label);
   document.querySelectorAll<HTMLElement>('[data-feature]').forEach(node => { node.hidden = !profile.features[node.dataset.feature]; });
+  const hasBatch = Object.values(profile.scopes || {}).some((value: any) => value && typeof value.label === 'string' && !value.cachedLabel);
+  const batchButtons = [$('batch-download'), $('batch-download-role')].filter(Boolean) as HTMLElement[];
+  batchButtons.forEach(button => { button.hidden = !hasBatch; });
+  $('queue-status').hidden = !hasBatch;
   $('dynamic-filter').closest('fieldset').hidden = !profile.features.dynamicCg || profile.features.dynamicFilter === false;
   document.querySelectorAll<HTMLButtonElement>('[data-download-scope]').forEach(button => { button.hidden = !profile.scopes[button.dataset.downloadScope]; });
   $('sort-order').replaceChildren(...SORT_ORDERS.filter(order => !order.feature || profile.features[order.feature]).map(order => {
@@ -136,6 +141,7 @@ async function activateGame(project, { focus = false }: any = {}) {
   catch (error) { if (generation !== gameGeneration) return; $('main-content').setAttribute('aria-busy', 'false'); $('page-description').textContent = error.message; throw error; }
   if (generation !== gameGeneration) return;
   $('main-content').setAttribute('aria-busy', 'false'); applyRoute({ focus }); await pollStatus(currentSession);
+  refreshQueue(true);
 }
 async function loadProjects() {
   const response = await fetch('/api/games', { cache: 'no-store' }); if (!response.ok) throw new Error('游戏列表读取失败。');
@@ -845,3 +851,161 @@ function refreshMountedGames() {
 }
 window.addEventListener('focus', refreshMountedGames);
 window.setInterval(refreshMountedGames, 5000);
+
+// ── Batch download (enqueue many roles into the background queue) ──────────
+function batchCandidates(target) {
+  const items = currentSession.profile.catalogCharacters(library, {});
+  if (target === 'saved') return items.filter(character => !character.collected);
+  if (target === 'missing') return items.filter(character => character.collected);
+  return items;
+}
+function batchScopes() {
+  const scopes = currentSession.profile.scopes || {};
+  return Object.entries(scopes).filter(([, value]: any) => value && typeof value.label === 'string' && !value.cachedLabel);
+}
+function parseIds(text) {
+  const ids = new Set<string>(), raw = String(text || '').replace(/[～~—–]/g, '-').trim();
+  if (!raw) return [...ids];
+  for (const token of raw.split(/[\s,，、;；]+/)) {
+    const range = /^(\d+)-(\d+)$/.exec(token.trim());
+    if (range) {
+      const first = Number(range[1]), last = Number(range[2]);
+      if (last >= first && last - first < 10000) for (let id = first; id <= last; id++) ids.add(String(id));
+    } else if (token.trim()) ids.add(token.trim());
+  }
+  return [...ids];
+}
+function queueUrl(session = currentSession) { return '/api/projects/' + encodeURIComponent(session.id) + '/queue'; }
+function openBatchDialog() {
+  if (!currentSession || !library) return;
+  $('batch-game').textContent = currentSession.profile.label;
+  $('batch-scope').replaceChildren(...batchScopes().map(([id, value]: any) => {
+    const option = element('option', '', value.label); option.value = id;
+    if (id === 'all') option.selected = true; return option;
+  }));
+  $('batch-ids').value = ''; $('batch-retry').checked = false;
+  $('batch-message').hidden = true; updateBatchSummary();
+  openDialog($('batch-dialog')); $('batch-target').focus();
+}
+function updateBatchSummary() {
+  if (!currentSession || !library) return;
+  const custom = parseIds($('batch-ids').value);
+  const count = custom.length ? custom.length : batchCandidates($('batch-target').value).length;
+  const scopeLabel = ($('batch-scope').selectedOptions[0] as HTMLOptionElement)?.textContent || '';
+  $('batch-summary').textContent = `即将把 ${count} 个角色加入“${scopeLabel}”下载队列。`;
+}
+async function submitBatch(event) {
+  event.preventDefault();
+  if (!currentSession || !library) return;
+  const scope = $('batch-scope').value; const custom = parseIds($('batch-ids').value);
+  const ids = custom.length ? custom : batchCandidates($('batch-target').value)
+    .map(character => character.id);
+  if (!ids.length) { $('batch-message').textContent = '没有可加入队列的角色。'; $('batch-message').hidden = false; return; }
+  const button = $('batch-submit'); button.disabled = true;
+  try {
+    const response = await fetch(queueUrl(), { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids, scope, retryMissing: $('batch-retry').checked }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '加入队列失败。');
+    notify(`已加入 ${data.added?.length ?? ids.length} 个下载任务。可在“下载队列”查看进度。`);
+    $('batch-dialog').close(); refreshQueue(true);
+  } catch (error) { $('batch-message').textContent = error.message; $('batch-message').hidden = false; }
+  finally { button.disabled = false; }
+}
+
+// ── Download queue UI ─────────────────────────────────────────────────────
+function queuePhaseLabel(item) {
+  const phase = item.phase, scope = currentSession?.profile.scopes[item.scope]?.label;
+  const table: any = { ui: '播放器 UI', client: '公开客户端配置', version: '游戏资源版本', catalog: '角色清单', icons: '角色头像', scripts: '剧情', indexing: '素材引用', cg: currentSession?.profile.features?.stories ? 'CG 与剧情素材' : 'CG', motions: '动态 CG', portraits: '立绘', voices: '角色语音', extracting: '角色内容' };
+  return item.state === 'active' ? (table[phase] || scope || '资源') : scope || '资源';
+}
+function queueStatusText(item) {
+  if (item.status === 'done') return item.state === 'partial' ? '已完成（部分缺失）' : '已完成';
+  if (item.status === 'failed') return '失败' + (item.error ? '：' + item.error : '');
+  if (item.status === 'active') {
+    const total = item.targets ?? 0, done = item.checked ?? 0;
+    return total > 0 ? (done + ' / ' + total) : '下载中…';
+  }
+  return '等待中';
+}
+function renderQueue() {
+  const list = $('queue-list'); list.replaceChildren();
+  const live = queueItems.filter(item => item.status === 'pending' || item.status === 'active');
+  const finished = queueItems.filter(item => item.status === 'done' || item.status === 'failed');
+  const ordered = [...live, ...finished].slice(0, 200);
+  $('queue-empty').hidden = !!ordered.length;
+  const pending = live.filter(item => item.status === 'pending').length, active = live.length - pending;
+  $('queue-progress-summary').textContent = live.length
+    ? `队列：${active} 个下载中，${pending} 个等待` + (finished.length ? ` · ${finished.length} 个已完成` : '')
+    : (finished.length ? `已完成 ${finished.length} 个任务` : '暂无任务');
+  $('queue-clear').hidden = !finished.length;
+  for (const item of ordered) {
+    const row = element('div', 'queue-item queue-' + item.status);
+    const label = element('div', 'queue-item-label', (item.id || '角色') + ' · ' + queuePhaseLabel(item));
+    const status = element('div', 'queue-item-status', queueStatusText(item));
+    row.append(label, status);
+    if (item.status === 'pending') {
+      const remove = element('button', 'queue-remove', '移除'); remove.type = 'button';
+      remove.addEventListener('click', () => removeQueueItem(item));
+      row.append(remove);
+    }
+    list.append(row);
+  }
+}
+async function refreshQueue(force = false) {
+  if (!currentSession) return;
+  if (!force && !queueOpen && !queueItems.some(item => item.status === 'pending' || item.status === 'active')) return;
+  const generation = ++queueGeneration;
+  try {
+    const response = await fetch(queueUrl(), { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = await response.json();
+    queueItems = data.items || [];
+  } catch { /* Keep last known queue state when the server is briefly busy. */ }
+  if (generation !== queueGeneration) return;
+  if (queueOpen) renderQueue();
+  updateQueueBadge();
+  if (queueItems.some(item => item.status === 'pending' || item.status === 'active')) scheduleQueuePoll();
+  updateGetButtons();
+}
+function scheduleQueuePoll() { clearTimeout(queuePolling); queuePolling = setTimeout(() => refreshQueue(), 3000); }
+function updateQueueBadge() {
+  const running = queueItems.some(item => item.status === 'pending' || item.status === 'active');
+  $('queue-status').textContent = running ? '下载队列 · ' + queueItems.filter(item => item.status === 'pending' || item.status === 'active').length : '下载队列';
+  $('queue-status').dataset.active = running ? 'true' : 'false';
+}
+async function removeQueueItem(item) {
+  if (!currentSession) return;
+  try {
+    await fetch(queueUrl() + '?id=' + encodeURIComponent(item.id) + '&scope=' + encodeURIComponent(item.scope), { method: 'DELETE' });
+  } catch { /* ignore */ }
+  await refreshQueue(true);
+}
+function clearQueueFinished() {
+  if (!currentSession) return;
+  fetch(queueUrl() + '?action=clear', { method: 'DELETE' }).then(() => refreshQueue(true)).catch(() => {});
+}
+function openQueue() {
+  queueOpen = true; openDialog($('queue-dialog')); refreshQueue(true);
+}
+$('queue-dialog').addEventListener('close', () => { queueOpen = false; });
+$('batch-dialog').addEventListener('close', () => {});
+$('batch-target').addEventListener('change', updateBatchSummary);
+$('batch-scope').addEventListener('change', updateBatchSummary);
+$('batch-ids').addEventListener('input', updateBatchSummary);
+$('batch-form').addEventListener('submit', submitBatch);
+$('batch-cancel').addEventListener('click', () => $('batch-dialog').close());
+$('batch-close').addEventListener('click', () => $('batch-dialog').close());
+$('queue-close').addEventListener('click', () => $('queue-dialog').close());
+$('queue-clear').addEventListener('click', clearQueueFinished);
+$('batch-download').addEventListener('click', openBatchDialog);
+$('queue-status').addEventListener('click', openQueue);
+$('batch-download-role').addEventListener('click', () => {
+  if (!selectedRole) return;
+  const id = (currentSession.profile.downloadCharacter?.(selectedRole) || selectedRole).id;
+  $('batch-ids').value = id; openBatchDialog(); updateBatchSummary();
+});
+// Light background refresh keeps the queue badge and dialog current without
+// blocking the page; refreshQueue early-returns when there is nothing to track.
+window.setInterval(() => { if (!document.hidden) refreshQueue(); }, 3000);
+refreshQueue();

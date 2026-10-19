@@ -16,6 +16,8 @@ export interface PageElements {
   'page-description': HTMLElementTagNameMap['p'];
   'result-count': HTMLElementTagNameMap['span'];
   'discover-characters': HTMLElementTagNameMap['button'];
+  'batch-download': HTMLElementTagNameMap['button'];
+  'queue-status': HTMLElementTagNameMap['button'];
   'refresh': HTMLElementTagNameMap['button'];
   'catalog': HTMLElementTagNameMap['section'];
   'empty': HTMLElementTagNameMap['div'];
@@ -123,4 +125,21 @@ export interface PageElements {
   'story-title': HTMLElementTagNameMap['h2'];
   'story-reader': HTMLElementTagNameMap['div'];
   'toast': HTMLElementTagNameMap['div'];
+  'batch-dialog': HTMLElementTagNameMap['dialog'];
+  'batch-form': HTMLElementTagNameMap['form'];
+  'batch-target': HTMLElementTagNameMap['select'];
+  'batch-scope': HTMLElementTagNameMap['select'];
+  'batch-ids': HTMLElementTagNameMap['textarea'];
+  'batch-retry': HTMLElementTagNameMap['input'];
+  'batch-summary': HTMLElementTagNameMap['p'];
+  'queue-dialog': HTMLElementTagNameMap['dialog'];
+  'queue-list': HTMLElementTagNameMap['div'];
+  'queue-clear': HTMLElementTagNameMap['button'];
+  'queue-empty': HTMLElementTagNameMap['p'];
+  'queue-progress-summary': HTMLElementTagNameMap['span'];
+  'queue-close': HTMLElementTagNameMap['button'];
+  'batch-close': HTMLElementTagNameMap['button'];
+  'batch-submit': HTMLElementTagNameMap['button'];
+  'batch-message': HTMLElementTagNameMap['p'];
+  'batch-cancel': HTMLElementTagNameMap['button'];
 }
